@@ -129,6 +129,49 @@ func importInto(t *testing.T, web *sql.DB, data []byte) {
 	}
 }
 
+// The secret -mcp-http token never leaves in an export, and an imported
+// file that still holds one has it removed. Other settings travel.
+func TestExportLeavesSecretsBehind(t *testing.T) {
+	ctx := context.Background()
+	src := freshDB(t, fileDSN(filepath.Join(t.TempDir(), "secret.sqlite3"), true))
+	for _, q := range []string{
+		`INSERT INTO tracker_settings(key,value) VALUES('mcp_http_token','s3cr3t-token-value')`,
+		`INSERT INTO tracker_settings(key,value) VALUES('base_resume','My base resume')`,
+	} {
+		if _, err := src.Exec(q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	data, err := exportForDownload(ctx, src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(data, []byte("s3cr3t-token-value")) {
+		t.Error("the export file contains the MCP token")
+	}
+	var token string
+	if err = src.QueryRow(`SELECT value FROM tracker_settings WHERE key='mcp_http_token'`).Scan(&token); err != nil || token == "" {
+		t.Errorf("exporting must not remove the token from the database itself: %q, %v", token, err)
+	}
+	web := freshDB(t, "file:/secrets.db?vfs=memdb&_pragma=page_size(4096)")
+	if _, _, err = importDatabase(ctx, web, data); err != nil {
+		t.Fatal(err)
+	}
+	var base string
+	if err = web.QueryRow(`SELECT value FROM tracker_settings WHERE key='base_resume'`).Scan(&base); err != nil || base != "My base resume" {
+		t.Errorf("other settings should travel: %q, %v", base, err)
+	}
+	raw, _ := exportDatabase(ctx, src) // an old-style export that kept the token
+	if _, _, err = importDatabase(ctx, web, raw); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	web.QueryRow(`SELECT count(*) FROM tracker_settings WHERE key='mcp_http_token'`).Scan(&n)
+	if n != 0 {
+		t.Error("an imported token should be removed")
+	}
+}
+
 // Files that are not a tracker are refused and leave the data alone.
 func TestImportRefusesBadFiles(t *testing.T) {
 	ctx := context.Background()

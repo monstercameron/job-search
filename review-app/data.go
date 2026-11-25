@@ -74,6 +74,38 @@ func exportDatabase(ctx context.Context, db *sql.DB) ([]byte, error) {
 
 var importSeq atomic.Int64
 
+// deleteSecrets removes the settings that must never leave this machine in
+// a file: the token in the secret -mcp-http URL is a password.
+const deleteSecrets = "DELETE FROM tracker_settings WHERE key IN ('mcp_http_token')"
+
+// exportForDownload is the database as a file to hand to the user, with the
+// secret settings removed from the copy.
+func exportForDownload(ctx context.Context, db *sql.DB) ([]byte, error) {
+	data, err := exportDatabase(ctx, db)
+	if err != nil {
+		return nil, err
+	}
+	name := fmt.Sprintf("export-%d.db", importSeq.Add(1))
+	memdb.Create(name, data)
+	defer memdb.Delete(name)
+	// secure_delete overwrites the removed rows, which would otherwise stay
+	// readable in the file's free pages.
+	copyDB, err := sql.Open("sqlite3", "file:/"+name+"?vfs=memdb&_pragma=secure_delete(1)")
+	if err != nil {
+		return nil, err
+	}
+	defer copyDB.Close()
+	var has int
+	copyDB.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='tracker_settings'").Scan(&has)
+	if has == 0 {
+		return data, nil
+	}
+	if _, err = copyDB.ExecContext(ctx, deleteSecrets); err != nil {
+		return nil, err
+	}
+	return exportDatabase(ctx, copyDB)
+}
+
 // importDatabase replaces the main database with data, after checking that
 // data is an intact SQLite file holding a jobs table. The copy goes through
 // SQLite's backup API, so every pooled connection sees the new contents.
@@ -142,6 +174,10 @@ func importDatabase(ctx context.Context, db *sql.DB, data []byte) (jobs, apps in
 		return 0, 0, errors.New("that database could not be updated for this app, so nothing was imported")
 	}
 	conn.Close()
+	// A file exported by an older version may still hold a secret.
+	if _, err = db.ExecContext(ctx, deleteSecrets); err != nil {
+		return 0, 0, err
+	}
 	db.QueryRowContext(ctx, "SELECT count(*) FROM jobs").Scan(&jobs)
 	db.QueryRowContext(ctx, "SELECT count(*) FROM applications").Scan(&apps)
 	return jobs, apps, nil
@@ -282,7 +318,7 @@ func registerData(db *sql.DB, canImport bool) {
 			http.Error(w, "Method not allowed", 405)
 			return
 		}
-		data, err := exportDatabase(r.Context(), db)
+		data, err := exportForDownload(r.Context(), db)
 		if err != nil {
 			log.Printf("export: %v", err)
 			http.Error(w, "Could not export the database", 500)
