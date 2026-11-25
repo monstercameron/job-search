@@ -1,0 +1,29 @@
+# Personal data: the tracker database, its backups, and exported résumés.
+*.sqlite
+*.sqlite3
+*.sqlite-*
+*.sqlite3-*
+*.db
+*.db-*
+*.db3
+applications/
+
+# The owner's own details and notes stay on this machine. owner.example.md is
+# the committed template for owner.md.
+.claude/skills/apply-to-job/owner.md
+SEARCH-NOTES.md
+
+# Built binaries and their leftovers.
+*.exe
+*.exe~
+*.previous.exe
+
+# Logs and editor or OS clutter.
+*.log
+*.tmp
+*~
+.DS_Store
+Thumbs.db
+
+# Local Claude Code settings (per machine, may hold permissions or tokens).
+.claude/settings.local.json
