@@ -22,6 +22,8 @@ The skill holds the full procedure, the generic form answers, the blind review, 
 | `job_search-before-*.sqlite3` | Database backups (git-ignored). Copy the database to one before any schema or data change. |
 | `applications\<job id>-<Company>\` | Exported résumés per job (PDF, Word and text), written by `save_tailored_resume` (git-ignored). |
 | `review-app\` | The Go web app and MCP server. Its [README](review-app/README.md) explains every screen and tool. |
+| `review-app\web\`, `review-app	oolsuildweb\` | The browser (WebAssembly) build: service worker, first-visit page and the site builder. `main_native.go` is the desktop entry point, `main_web.go` the browser one; both share `app.go`. |
+| `.github\workflows\pages.yml` | Builds the browser version and publishes it to GitHub Pages on a push to `main`. |
 | `README.md` | The project overview: features, quick start, MCP setup. |
 | `SEARCH-NOTES.md` | The owner's search profile and research notes, if present (git-ignored). |
 | `LICENSE` | MIT. The embedded HTMLeX runtime keeps its own ISC license. |
@@ -39,7 +41,7 @@ The skill holds the full procedure, the generic form answers, the blind review, 
 
 ## Working on the app
 
-- Code lives in `review-app\`. Run `go vet ./...` and `go test ./...` there; tests use a throwaway database, never the live one. Test fixtures use invented people and companies; never put the owner's real details in a test.
+- Code lives in `review-app\`. Run `go vet ./...` and `go test ./...` there; tests use a throwaway database, never the live one. The browser build must also compile: `GOOS=js GOARCH=wasm go vet .`. Try it with `go run ./tools/buildweb -serve 127.0.0.1:8111`. Test fixtures use invented people and companies; never put the owner's real details in a test.
 - After a change, rebuild and restart the running app so the owner always sees the latest version:
   1. Build to `job-review-mcp.new.exe`.
   2. Stop the running `job-review-mcp.exe`, along with whatever starts it automatically, if anything does.

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	_ "modernc.org/sqlite"
+	_ "github.com/ncruces/go-sqlite3/driver"
 )
 
 var testDB *sql.DB
@@ -22,7 +22,7 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic(err)
 	}
-	testDB, err = sql.Open("sqlite", "file:"+filepath.ToSlash(filepath.Join(dir, "test.sqlite3")))
+	testDB, err = sql.Open("sqlite3", "file:"+filepath.ToSlash(filepath.Join(dir, "test.sqlite3")))
 	if err != nil {
 		panic(err)
 	}
@@ -50,7 +50,8 @@ func TestMain(m *testing.M) {
 
 func resetJobs(t *testing.T, rows ...string) {
 	t.Helper()
-	for _, q := range []string{"DELETE FROM application_events", "DELETE FROM applications", "DELETE FROM job_dismissals", "DELETE FROM jobs"} {
+	// Children first: foreign keys are enforced, as in the app.
+	for _, q := range []string{"DELETE FROM interviews", "DELETE FROM communications", "DELETE FROM application_documents", "DELETE FROM application_events", "DELETE FROM applications", "DELETE FROM job_dismissals", "DELETE FROM jobs"} {
 		if _, err := testDB.Exec(q); err != nil {
 			t.Fatal(err)
 		}

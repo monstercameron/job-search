@@ -69,7 +69,7 @@ func isLocalHost(hostHeader string) bool {
 // loopback, so another website cannot read tracker data via DNS rebinding.
 func localHostOnly(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !isLocalHost(r.Host) {
+		if !hostAllowed(r.Host) {
 			http.Error(w, "Local host required", http.StatusForbidden)
 			return
 		}
@@ -95,8 +95,12 @@ func validDate(s string) bool {
 }
 
 // Only accept writes from this browser's localhost origin; never transmit emails.
+// hostAllowed says which Host a request may name: localhost for the desktop
+// app; the browser build replaces it with the page's own host.
+var hostAllowed = isLocalHost
+
 func localPost(r *http.Request) bool {
-	if !isLocalHost(r.Host) {
+	if !hostAllowed(r.Host) {
 		return false
 	}
 	origin := r.Header.Get("Origin")

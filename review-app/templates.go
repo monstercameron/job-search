@@ -160,28 +160,30 @@ var pageFuncs = template.FuncMap{
 		}
 		return m
 	},
-	"fmtDate":      fmtDate,
-	"list":         func(s ...string) []string { return s },
-	"group":        func(legend, name string, c []Choice) ChoiceGroup { return ChoiceGroup{legend, name, c} },
-	"join":         strings.Join,
-	"linkFor":      linkFor,
-	"splitLines":   splitLines,
-	"splitItems":   splitItems,
-	"dateRange":    dateRange,
-	"tenure":       tenure,
-	"sectionNoun":  sectionNoun,
-	"fmtShort":     fmtShort,
-	"icon":         icon,
-	"statusTone":   statusTone,
-	"priorityTone": priorityTone,
-	"groupTone":    groupTone,
-	"scoreTone":    scoreTone,
-	"scoreWord":    scoreWord,
-	"followTone":   followTone,
-	"groupIcon":    groupIcon,
-	"contactIcon":  contactIcon,
-	"iconSprite":   func() template.HTML { return iconSprite },
-	"relDay":       relDay,
+	"fmtDate":        fmtDate,
+	"list":           func(s ...string) []string { return s },
+	"group":          func(legend, name string, c []Choice) ChoiceGroup { return ChoiceGroup{legend, name, c} },
+	"join":           strings.Join,
+	"linkFor":        linkFor,
+	"splitLines":     splitLines,
+	"splitItems":     splitItems,
+	"dateRange":      dateRange,
+	"tenure":         tenure,
+	"sectionNoun":    sectionNoun,
+	"fmtShort":       fmtShort,
+	"icon":           icon,
+	"statusTone":     statusTone,
+	"priorityTone":   priorityTone,
+	"groupTone":      groupTone,
+	"scoreTone":      scoreTone,
+	"scoreWord":      scoreWord,
+	"followTone":     followTone,
+	"groupIcon":      groupIcon,
+	"contactIcon":    contactIcon,
+	"iconSprite":     func() template.HTML { return iconSprite },
+	"webBuild":       func() bool { return webBuild },
+	"storageNotices": storageNotices,
+	"relDay":         relDay,
 	"plural": func(n int, one, many string) string {
 		if n == 1 {
 			return one
@@ -190,7 +192,7 @@ var pageFuncs = template.FuncMap{
 	},
 }
 
-var pages = template.Must(template.New("pages").Funcs(pageFuncs).Parse(layoutHTML + jobsHTML + trackerHTML + profileHTML + nextupHTML + metricsHTML))
+var pages = template.Must(template.New("pages").Funcs(pageFuncs).Parse(layoutHTML + jobsHTML + trackerHTML + profileHTML + nextupHTML + metricsHTML + dataHTML))
 
 const layoutHTML = `
 {{define "top"}}<!doctype html>
@@ -201,7 +203,8 @@ const layoutHTML = `
 <a class="wordmark" href="/"><span class="mark" aria-hidden="true">{{icon "search"}}</span>Job search</a>
 <nav class="tabs" id="tabs" aria-label="Sections">{{template "tabs" .}}</nav>
 </div></header>
-<main id="main" class="page"><div id="flash" class="flash"></div>{{end}}
+<main id="main" class="page"><div id="flash" class="flash"></div>
+{{range storageNotices}}<p class="form-error site-alert" role="alert">{{.}} <a href="/data">Export or import your data</a></p>{{end}}{{end}}
 
 {{define "tabs"}}<a href="/" {{if eq .Active "jobs"}}aria-current="page"{{end}}>{{icon "jobs"}}<span class="tab-label">Jobs</span>{{if eq .Active "jobs"}}<span class="tab-mark" aria-hidden="true"></span>{{end}}</a>
 <a href="/next" {{if eq .Active "next"}}aria-current="page"{{end}}>{{icon "next"}}<span class="tab-label">Next up</span>{{if eq .Active "next"}}<span class="tab-mark" aria-hidden="true"></span>{{end}}</a>
@@ -210,7 +213,12 @@ const layoutHTML = `
 <a href="/resume" {{if eq .Active "resume"}}aria-current="page"{{end}}>{{icon "resume"}}<span class="tab-label">Résumé</span>{{if eq .Active "resume"}}<span class="tab-mark" aria-hidden="true"></span>{{end}}</a>
 <a href="/metrics" {{if eq .Active "metrics"}}aria-current="page"{{end}}>{{icon "metrics"}}<span class="tab-label">Metrics</span>{{if eq .Active "metrics"}}<span class="tab-mark" aria-hidden="true"></span>{{end}}</a>{{end}}
 
-{{define "bottom"}}</main></body></html>{{end}}
+{{define "nojobs"}}<div class="empty"><span class="empty-glyph" aria-hidden="true">{{icon "archive"}}</span>{{if .}}<h2>No jobs saved yet</h2>{{end}}
+{{if webBuild}}<p>Bring in a database exported from the desktop app or from another browser, or load a few sample jobs to try the app. The sample employers are invented; importing your own data later replaces them.</p>
+<div class="empty-actions"><a class="btn primary" href="/data">{{icon "up"}}Import your data</a><form method="post" action="/data/sample"><button class="btn secondary">{{icon "plus"}}Load sample jobs</button></form></div>
+{{else}}<p>Leads are saved through the MCP tools: ask your assistant to save a job with create_job, and it appears here. The README explains the setup.</p>{{end}}</div>{{end}}
+{{define "bottom"}}</main>
+<footer class="site-foot"><a href="/data">{{icon "download"}}{{if webBuild}}Import or export your data{{else}}Export your data{{end}}</a></footer></body></html>{{end}}
 
 {{define "problem"}}{{template "top" .Nav}}
 <div class="page-head has-tile"><span class="tile tone-bad" aria-hidden="true">{{icon "alert"}}</span><h1>Could not save</h1><p class="lede">{{.Message}}</p></div>
@@ -252,7 +260,7 @@ const jobsHTML = `
 <div id="jobs-view">{{template "jobsview" .}}</div>
 {{template "bottom"}}{{end}}
 
-{{define "results"}}<div class="results-head"><h2 id="results-title"{{if .Fragment}} tabindex="-1" autofocus{{end}}>{{if .Count}}{{.Start}}–{{.End}} of {{.Count}} {{plural .Count "job" "jobs"}}{{else}}No jobs found{{end}}</h2><p class="meta">{{if .Count}}Sorted by {{.SortLabel}}.{{end}}{{if .FilterCount}} <a href="/" get="/">Clear {{.FilterCount}} {{plural .FilterCount "filter" "filters"}}</a>{{end}}</p></div>
+{{define "results"}}<div class="results-head"><h2 id="results-title"{{if .Fragment}} tabindex="-1" autofocus{{end}}>{{if .Count}}{{.Start}}–{{.End}} of {{.Count}} {{plural .Count "job" "jobs"}}{{else if not .Nav.Jobs}}No jobs saved yet{{else}}No jobs found{{end}}</h2><p class="meta">{{if .Count}}Sorted by {{.SortLabel}}.{{end}}{{if .FilterCount}} <a href="/" get="/">Clear {{.FilterCount}} {{plural .FilterCount "filter" "filters"}}</a>{{end}}</p></div>
 {{if .Jobs}}<ol class="joblist">{{range .Jobs}}{{$t := .Title}}<li class="job">
 <div class="job-score{{if .HasScore}} tone-{{scoreTone .ScoreN}}{{end}}">{{if .HasScore}}<strong class="score-num" aria-hidden="true" style="view-transition-name:score-{{.ID}}">{{.ScoreN}}</strong><span class="score-label" aria-hidden="true">{{scoreWord .ScoreN}}<span class="lw"> match</span></span>{{template "scorebar" .}}{{if .Weak}}<span class="weak">Weakest: {{.Weak}}</span>{{end}}{{else}}<span class="score-none">Not scored</span>{{end}}</div>
 <div class="job-main">
@@ -275,7 +283,7 @@ const jobsHTML = `
 </div>
 </li>{{end}}</ol>
 {{template "pagination" .}}
-{{else}}<div class="empty"><span class="empty-glyph" aria-hidden="true">{{icon "search"}}</span><h3>Nothing matches{{if .Q}} “{{.Q}}”{{end}}.</h3><p>Try a shorter search, or clear the filters to see all {{.Nav.Jobs}} jobs.</p><a class="btn primary" href="/" get="/">{{icon "close"}}Clear search and filters</a></div>{{end}}{{end}}
+{{else if not .Nav.Jobs}}{{template "nojobs" false}}{{else}}<div class="empty"><span class="empty-glyph" aria-hidden="true">{{icon "search"}}</span><h3>Nothing matches{{if .Q}} “{{.Q}}”{{end}}.</h3><p>Try a shorter search, or clear the filters to see all {{.Nav.Jobs}} jobs.</p><a class="btn primary" href="/" get="/">{{icon "close"}}Clear search and filters</a></div>{{end}}{{end}}
 
 {{define "research"}}<section class="group research"><h4>{{icon "globe"}}Research the company</h4><ul class="linkrow">
 {{with officialWebsite .Company}}<li><a href="{{.}}" target="_blank" rel="noopener noreferrer">Company website<span class="sr"> (opens in a new tab)</span></a></li>{{else}}<li><a href="{{researchURL .Company "website"}}" target="_blank" rel="noopener noreferrer">Find the website<span class="sr"> (opens in a new tab)</span></a></li>{{end}}

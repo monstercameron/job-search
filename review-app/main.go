@@ -3,19 +3,15 @@ package main
 import (
 	"database/sql"
 	"embed"
-	"flag"
 	"fmt"
 	"html/template"
-	"io/fs"
 	"log"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 
-	_ "modernc.org/sqlite"
+	_ "github.com/ncruces/go-sqlite3/driver"
 )
 
 //go:embed static/* static/htmlex/*
@@ -558,95 +554,4 @@ func jobsHandler(db *sql.DB) http.HandlerFunc {
 		}
 		render(w, "page", p)
 	}
-}
-
-func main() {
-	dbPath := flag.String("db", "../job_search.sqlite3", "path to the SQLite database")
-	addr := flag.String("addr", "127.0.0.1:8080", "HTTP listen address")
-	mcpMode := flag.Bool("mcp", false, "serve MCP over stdin/stdout instead of HTTP")
-	mcpHTTP := flag.String("mcp-http", "", "serve MCP over Streamable HTTP on this address (for ChatGPT), for example 127.0.0.1:8765")
-	callTool := flag.String("call", "", "call one MCP tool by name, print its JSON result and exit (\"list\" lists the tools)")
-	callArgs := flag.String("args", "{}", "JSON arguments for -call")
-	callArgsFile := flag.String("args-file", "", "file holding the JSON arguments for -call (for long text such as a résumé)")
-	initDB := flag.Bool("init", false, "create the database file and its tables if they do not exist (for a first run)")
-	flag.Parse()
-	path, e := filepath.Abs(*dbPath)
-	if e != nil {
-		log.Fatal(e)
-	}
-	uriPath := filepath.ToSlash(path)
-	if !strings.HasPrefix(uriPath, "/") {
-		uriPath = "/" + uriPath
-	}
-	u := url.URL{Scheme: "file", Path: uriPath}
-	q := u.Query()
-	q.Set("mode", "rw")
-	if *initDB {
-		q.Set("mode", "rwc")
-	}
-	q.Add("_pragma", "foreign_keys(1)")
-	q.Add("_pragma", "busy_timeout(5000)")
-	u.RawQuery = q.Encode()
-	db, e := sql.Open("sqlite", u.String())
-	if e != nil {
-		log.Fatal(e)
-	}
-	defer db.Close()
-	if e = db.Ping(); e != nil {
-		log.Fatal(e)
-	}
-	if *initDB {
-		if e = initJobs(db); e != nil {
-			log.Fatal(e)
-		}
-	}
-	if e = migrateTracker(db); e != nil {
-		log.Fatal(e)
-	}
-	if e = migrateIndustry(db); e != nil {
-		log.Fatal(e)
-	}
-	if e = migrateProfile(db); e != nil {
-		log.Fatal(e)
-	}
-	if e = migrateNextUp(db); e != nil {
-		log.Fatal(e)
-	}
-	if e = migrateMetrics(db); e != nil {
-		log.Fatal(e)
-	}
-	dataDir = filepath.Dir(path)
-	registerTracker(db)
-	registerProfile(db)
-	registerResumeFiles(db)
-	registerNextUp(db)
-	registerMetrics(db)
-	if *callTool != "" {
-		args := []byte(*callArgs)
-		if *callArgsFile != "" {
-			if args, e = os.ReadFile(*callArgsFile); e != nil {
-				log.Fatal(e)
-			}
-		}
-		out, e := callMCPTool(db, *callTool, args)
-		fmt.Println(out)
-		if e != nil {
-			log.Fatal(e)
-		}
-		return
-	}
-	if *mcpHTTP != "" {
-		log.Fatal(serveMCPHTTP(db, *mcpHTTP))
-	}
-	if *mcpMode {
-		if e = runMCP(db); e != nil {
-			log.Fatal(e)
-		}
-		return
-	}
-	static, _ := fs.Sub(assets, "static")
-	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(static))))
-	http.HandleFunc("/", jobsHandler(db))
-	log.Printf("Job review: http://%s (database %s)", *addr, path)
-	log.Fatal(http.ListenAndServe(*addr, localHostOnly(http.DefaultServeMux)))
 }

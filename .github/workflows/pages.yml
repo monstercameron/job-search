@@ -1,0 +1,57 @@
+# Builds the browser version of the app and publishes it to GitHub Pages.
+# Turn it on once under Settings > Pages > Build and deployment > Source:
+# "GitHub Actions". The site is served at /<repository name>/.
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: review-app
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: review-app/go.mod
+          cache-dependency-path: review-app/go.sum
+      - name: Test
+        run: go test ./...
+      - name: Build the site
+        env:
+          REPO: ${{ github.event.repository.name }}
+        run: |
+          # A project site is served at /<repository>/; a <user>.github.io
+          # repository is the account's root site, served at /.
+          case "$REPO" in
+            *.github.io) BASE=/ ;;
+            *) BASE="/$REPO/" ;;
+          esac
+          go run ./tools/buildweb -base "$BASE" -out _site
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: review-app/_site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

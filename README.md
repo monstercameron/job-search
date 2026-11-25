@@ -1,6 +1,6 @@
 # Job Search
 
-A local job-search tracker: a Go web app for reviewing leads and tracking applications, and an MCP server that lets an AI assistant tailor a résumé and fill an application form while the tracker keeps the record. Everything runs on your own machine against one SQLite file.
+A local job-search tracker: a Go web app for reviewing leads and tracking applications, and an MCP server that lets an AI assistant tailor a résumé and fill an application form while the tracker keeps the record. Everything runs on your own machine against one SQLite file. The same app also runs entirely inside a web browser, with no server, so it can be hosted on GitHub Pages.
 
 The app never submits an application or sends a message. The assistant fills the employer's form; you check it and press Submit.
 
@@ -12,6 +12,7 @@ The app never submits an application or sends a message. The assistant fills the
 - **Profile:** the facts your résumé is built from (contact details, summary, experience, skills, projects, education), plus a list of claims to keep accurate.
 - **Résumé:** your base résumé, used to check each job's required skills against what you have.
 - **Metrics:** a pipeline funnel, response rate with its 95% range, applications per week, the match-score spread, leads by market and arrangement, and listing age. Charts are inline SVG written in Go, each with a table of the same numbers.
+- **Your data:** export the whole tracker as one SQLite file from the link at the foot of every page. The browser version also imports one, so you can move between the desktop app and the browser, or between browsers.
 - **Résumé A/B test:** label each application with the résumé version it went out with, and the Metrics page compares replies, interviews and offers per version. It shows counts only until each version has 10 applications, then compares response rates with a 95% interval for the difference.
 
 Colours carry meaning on every screen: green is moving forward, yellow is waiting or worth a check, red is a problem or urgent. Every coloured item also says its meaning in words, and every icon sits next to a text label. Pages work without JavaScript; with it, [HTMLeX](https://github.com/monstercameron/HTMLeX) swaps only the part of the page that changed.
@@ -45,6 +46,23 @@ Add leads with the `create_job` tool (see below), or from the command line:
 | `-call` | none | Run one MCP tool, print its JSON result and exit (`list` lists the tools) |
 | `-args`, `-args-file` | `{}` | JSON arguments for `-call` |
 
+## Run it in the browser
+
+The app also builds for WebAssembly and runs inside the browser: a service worker starts the Go program, and the same pages answer from a SQLite database held in memory ([ncruces/go-sqlite3](https://github.com/ncruces/go-sqlite3), SQLite compiled to pure Go). Nothing is sent to a server. The database is saved to the browser's storage after every change, because browsers stop an idle service worker and its memory with it. The next start loads the saved copy.
+
+On a first visit the tracker is empty. Import a database exported from the desktop app or another browser, or load six sample jobs (invented employers) to try it. The browser version has no MCP server, so an assistant cannot add jobs to it; add them in the desktop app and import the file. Clearing the site's data in the browser deletes the tracker, so export a copy now and then.
+
+To build and try it locally:
+
+```powershell
+cd review-app
+go run ./tools/buildweb -serve 127.0.0.1:8111
+```
+
+Then open http://127.0.0.1:8111/job-search/. `buildweb` compiles the app for `js/wasm` (about 32 MB, downloaded once and then cached), copies Go's `wasm_exec.js` and the files in `review-app/web/`, and writes the site to `review-app/_site/`. `-base` sets the path the site is served under (default `/job-search/`; use `/` for a custom domain). With `-serve` it then serves the folder the way GitHub Pages does.
+
+The workflow in [.github/workflows/pages.yml](.github/workflows/pages.yml) runs the tests, builds the site and publishes it to GitHub Pages on every push to `main`. To turn it on for a copy of this repository, set **Settings > Pages > Build and deployment > Source** to **GitHub Actions**. The site is then at `https://<user>.github.io/<repository>/`.
+
 ## Using it with an AI assistant
 
 The same executable is an MCP server. For Claude Code:
@@ -69,6 +87,7 @@ The [apply-to-job skill](.claude/skills/apply-to-job/SKILL.md) runs a whole appl
 
 - Your data stays in the SQLite file. `.gitignore` keeps every database file, the exported résumés in `applications/`, your `owner.md`, built binaries and logs out of the repository.
 - The web app answers only requests addressed to localhost and accepts writes only from the same local browser origin.
+- The browser version keeps the tracker in that browser's storage for the site and never uploads it. It accepts form posts only from its own pages.
 - Any connected assistant can read and change the tracker, so connect only clients you trust. The `-mcp-http` mode is reachable by anyone who has its secret URL; stop the tunnel when you are done.
 
 ## Repository layout
@@ -77,6 +96,9 @@ The [apply-to-job skill](.claude/skills/apply-to-job/SKILL.md) runs a whole appl
 |---|---|
 | `review-app/` | The Go web app and MCP server, with its tests and the detailed [README](review-app/README.md) |
 | `review-app/static/` | The stylesheet and the embedded HTMLeX runtime |
+| `review-app/web/` | The browser version's service worker and first-visit page |
+| `review-app/tools/buildweb/` | Builds the browser version into a static site |
+| `.github/workflows/pages.yml` | Publishes the browser version to GitHub Pages |
 | `.claude/skills/apply-to-job/` | The Claude Code skill for applying to a job |
 | `AGENTS.md` | Rules and workflow for agents working here |
 
@@ -86,6 +108,7 @@ The [apply-to-job skill](.claude/skills/apply-to-job/SKILL.md) runs a whole appl
 cd review-app
 go vet ./...
 go test ./...
+$env:GOOS = "js"; $env:GOARCH = "wasm"; go vet .; Remove-Item Env:GOOS, Env:GOARCH
 ```
 
 The tests use a throwaway database and never touch your real one.

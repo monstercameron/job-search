@@ -15,7 +15,8 @@ const nextupHTML = `
 </nav>{{end}}
 
 {{define "nextview"}}{{with .Notice}}<div class="saved next-notice" id="saved" role="status" tabindex="-1"{{if $.Fragment}} autofocus{{end}}><p>{{.Text}}</p>{{if .UndoID}}<form method="post" action="/next/save" post="/next/save"><input type="hidden" name="action" value="restore"><input type="hidden" name="job_id" value="{{.UndoID}}"><button class="btn secondary">Undo<span class="sr">: put it back in Next up</span></button></form>{{end}}</div>{{end}}
-{{if not .Total}}<div class="empty"><span class="empty-glyph" aria-hidden="true">{{icon "check"}}</span><h2{{if and .Fragment (not .Notice)}} tabindex="-1" autofocus{{end}}>Nothing left to apply to</h2><p>Every saved job has been applied to, closed or marked not interested. Add new leads, or check Applications for follow-ups.</p><a class="btn primary" href="/tracker">{{icon "apps"}}Open applications</a></div>
+{{if not .Nav.Jobs}}{{template "nojobs" true}}
+{{else if not .Total}}<div class="empty"><span class="empty-glyph" aria-hidden="true">{{icon "check"}}</span><h2{{if and .Fragment (not .Notice)}} tabindex="-1" autofocus{{end}}>Nothing left to apply to</h2><p>Every saved job has been applied to, closed or marked not interested. Add new leads, or check Applications for follow-ups.</p><a class="btn primary" href="/tracker">{{icon "apps"}}Open applications</a></div>
 {{else}}{{$p := .}}{{with .Job}}
 {{template "nextpager" (dict2 "Label" "Previous and next job" "P" $p "Top" true)}}
 <article class="panel nextcard" aria-labelledby="next-title">

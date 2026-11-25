@@ -9,7 +9,7 @@ import (
 
 // A first run with -init must give a database every page and tool can use.
 func TestInitJobsBuildsAWorkingFreshDatabase(t *testing.T) {
-	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(filepath.Join(t.TempDir(), "fresh.sqlite3"))+"?mode=rwc")
+	db, err := sql.Open("sqlite3", "file:"+filepath.ToSlash(filepath.Join(t.TempDir(), "fresh.sqlite3"))+"?mode=rwc")
 	if err != nil {
 		t.Fatal(err)
 	}
