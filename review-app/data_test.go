@@ -252,7 +252,7 @@ func TestSampleJobsFillAnEmptyTracker(t *testing.T) {
 	if _, err = loadSampleJobs(db); err == nil || !strings.Contains(err.Error(), "empty tracker") {
 		t.Errorf("a second load should be refused, got %v", err)
 	}
-	p, err := loadNextPage(db, 1)
+	p, err := loadNextPage(db, "", 1)
 	if err != nil || p.Total == 0 || p.Job.Score == "" {
 		t.Errorf("next up after the sample: total %d, score %q, %v", p.Total, p.Job.Score, err)
 	}

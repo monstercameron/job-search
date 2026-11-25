@@ -3,9 +3,11 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"html/template"
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -14,6 +16,7 @@ type TrackerJob struct {
 	ID                                                        int64
 	Company, Title, Status, Applied, Followup, Contact, Notes string
 	Feeling, FeelingNotes, LastActivity                       string
+	Score                                                     string // match score, for sorting the Applications page
 }
 
 // TimelineEvent is one dated entry on an application's activity timeline.
@@ -37,8 +40,8 @@ type Step struct {
 
 // AppGroup is one section of the Applications page.
 type AppGroup struct {
-	Title, Note string
-	Jobs        []TrackerJob
+	Key, Title, Note string
+	Jobs             []TrackerJob
 }
 
 type TrackerPage struct {
@@ -60,6 +63,11 @@ type TrackerPage struct {
 	FollowDue, Closed                       bool
 	Steps                                   []Step
 	Fragment                                bool // rendered as an HTMLeX fragment: the saved banner takes focus
+	// The Applications page's filter, its choices and how many it shows.
+	Filter AppFilter
+	Shows  []NextStage
+	Sorts  []AppSort
+	Shown  int
 }
 
 var statusOrder = []string{"Research", "Interested", "Preparing", "Applied", "Screening", "Interviewing", "Offer", "Accepted", "Rejected", "Withdrawn", "Closed"}
@@ -91,13 +99,22 @@ func splitList(s string) []string {
 	return strings.Split(s, ", ")
 }
 
+// showID names a Show choice in element ids; "" is "all".
+func showID(key string) string {
+	if key == "" {
+		return "all"
+	}
+	return key
+}
+
 func registerTracker(db *sql.DB) {
 	http.HandleFunc("/tracker", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" {
 			http.Error(w, "Method not allowed", 405)
 			return
 		}
-		rows, err := db.Query(`SELECT j.id,j.company,j.title,a.status,COALESCE(a.applied_date,''),COALESCE(a.follow_up_date,''),COALESCE(a.contact,''),COALESCE(a.notes,''),COALESCE(a.feeling,''),COALESCE(a.feeling_notes,''),
+		f := parseAppFilter(r.URL.Query())
+		rows, err := db.Query(`SELECT j.id,j.company,j.title,a.status,COALESCE(a.applied_date,''),COALESCE(a.follow_up_date,''),COALESCE(a.contact,''),COALESCE(a.notes,''),COALESCE(a.feeling,''),COALESCE(a.feeling_notes,''),COALESCE(CAST(j.score_total AS TEXT),''),
 			COALESCE((SELECT MAX(t) FROM (SELECT occurred_at t FROM communications WHERE application_id=a.id UNION ALL SELECT occurred_at FROM application_events WHERE application_id=a.id UNION ALL SELECT scheduled_at FROM interviews WHERE application_id=a.id AND scheduled_at <= strftime('%Y-%m-%dT%H:%M','now','localtime'))),'')
 			FROM applications a JOIN jobs j ON j.id=a.job_id ORDER BY CASE WHEN a.follow_up_date IS NULL OR a.follow_up_date='' THEN 1 ELSE 0 END, a.follow_up_date, j.company`)
 		if err != nil {
@@ -105,19 +122,22 @@ func registerTracker(db *sql.DB) {
 			return
 		}
 		defer rows.Close()
-		p := TrackerPage{Nav: loadNav(db, "apps", "Applications")}
-		due := AppGroup{Title: "Follow up now", Note: "The follow-up date you set has arrived."}
-		active := AppGroup{Title: "In progress", Note: "Applied and waiting, or in interviews."}
-		later := AppGroup{Title: "Not applied yet", Note: "Tracked while you research or prepare."}
-		closed := AppGroup{Title: "Closed", Note: "Accepted, rejected, withdrawn, or closed."}
+		p := TrackerPage{Filter: f, Sorts: appSorts, Statuses: statusOrder, Self: f.URL()}
+		due := AppGroup{Key: "due", Title: "Follow up now", Note: "The follow-up date you set has arrived."}
+		active := AppGroup{Key: "active", Title: "In progress", Note: "Applied and waiting, or in interviews."}
+		later := AppGroup{Key: "later", Title: "Not applied yet", Note: "Tracked while you research or prepare."}
+		closed := AppGroup{Key: "closed", Title: "Closed", Note: "Accepted, rejected, withdrawn, or closed."}
 		today := time.Now().Format("2006-01-02")
 		for rows.Next() {
 			var j TrackerJob
-			if err = rows.Scan(&j.ID, &j.Company, &j.Title, &j.Status, &j.Applied, &j.Followup, &j.Contact, &j.Notes, &j.Feeling, &j.FeelingNotes, &j.LastActivity); err != nil {
+			if err = rows.Scan(&j.ID, &j.Company, &j.Title, &j.Status, &j.Applied, &j.Followup, &j.Contact, &j.Notes, &j.Feeling, &j.FeelingNotes, &j.Score, &j.LastActivity); err != nil {
 				http.Error(w, "Could not read applications", 500)
 				return
 			}
 			p.Total++
+			if !f.matches(j) {
+				continue
+			}
 			stage := statusStage[j.Status]
 			switch {
 			case stage != "closed" && j.Followup != "" && j.Followup <= today:
@@ -134,10 +154,42 @@ func registerTracker(db *sql.DB) {
 			http.Error(w, "Could not read applications", 500)
 			return
 		}
+		// Counts for the Show choices are taken after the search and stage
+		// filters, so each says how many it would show.
+		p.Shows = append([]NextStage(nil), appShows...)
+		for i := range p.Shows {
+			p.Shows[i].On = p.Shows[i].Key == f.Show
+		}
 		for _, g := range []AppGroup{due, active, later, closed} {
-			if len(g.Jobs) > 0 {
-				p.Groups = append(p.Groups, g)
+			for i := range p.Shows {
+				if p.Shows[i].Key == "" || p.Shows[i].Key == g.Key {
+					p.Shows[i].Count += len(g.Jobs)
+				}
 			}
+			if len(g.Jobs) == 0 || (f.Show != "" && f.Show != g.Key) {
+				continue
+			}
+			sortApps(g.Jobs, f.Sort)
+			p.Shown += len(g.Jobs)
+			p.Groups = append(p.Groups, g)
+		}
+		title := "Applications"
+		if f.Narrowed() {
+			title = fmt.Sprintf("Applications, %d of %d", p.Shown, p.Total)
+		}
+		p.Nav = loadNav(db, "apps", title)
+		if isFragmentRequest(r) {
+			// Only the list and the counts change, so focus stays in the
+			// search box or on the control that was used.
+			frags := []Fragment{
+				{Target: "#apps-view(innerHTML)", Name: "appsview", Data: p},
+				{Target: "title(innerHTML)", HTML: template.HTML(template.HTMLEscapeString(title + " · Job search"))},
+			}
+			for _, s := range p.Shows {
+				frags = append(frags, Fragment{Target: "#apps-count-" + showID(s.Key) + "(innerHTML)", HTML: template.HTML(strconv.Itoa(s.Count))})
+			}
+			writeFragments(w, "Replace-Url", p.Self, frags...)
+			return
 		}
 		render(w, "dashboard", p)
 	})

@@ -5,9 +5,22 @@ const trackerHTML = `
 
 {{define "dashboard"}}{{template "top" .Nav}}
 <div class="page-head has-tile"><span class="tile" aria-hidden="true">{{icon "apps"}}</span><h1>Applications</h1><p class="lede">{{if .Total}}{{.Total}} {{plural .Total "job" "jobs"}} you are tracking, with what needs attention first.{{else}}Jobs you decide to pursue land here, with their status, follow-ups and contacts.{{end}}</p></div>
+{{if .Total}}<form class="finder app-finder" method="get" action="/tracker" get="/tracker" trigger="input" debounce="250" role="search">
+<div class="finder-search"><label for="app-q">Search</label><input id="app-q" type="search" name="q" value="{{.Filter.Q}}" placeholder="Company, title, contact, notes" autocomplete="off"></div>
+<div class="finder-filters">
+<label>Stage<select name="stage"><option value="">Any stage</option>{{range .Statuses}}<option value="{{.}}"{{if eq . $.Filter.Stage}} selected{{end}}>{{.}}</option>{{end}}</select></label>
+<label>Sort by<select name="sort">{{range .Sorts}}<option value="{{.Key}}"{{if eq .Key $.Filter.Sort}} selected{{end}}>{{.Label}}</option>{{end}}</select></label>
+</div>
+<div class="finder-actions"><button type="submit" class="btn primary">{{icon "search"}}Show applications</button></div>
+<fieldset class="choices finder-chips"><legend>Show</legend><div class="choice-row">{{range .Shows}}<label class="choice"><input type="radio" name="show" value="{{.Key}}"{{if .On}} checked{{end}}><span>{{.Label}} <span class="count" id="apps-count-{{showID .Key}}">{{.Count}}</span></span></label>{{end}}</div></fieldset>
+</form>{{end}}
+<div id="apps-view">{{template "appsview" .}}</div>
+{{template "bottom"}}{{end}}
+
+{{define "appsview"}}{{if and .Total .Filter.Narrowed}}<p class="results-line" role="status">Showing {{.Shown}} of {{.Total}} {{plural .Total "application" "applications"}}. <a href="/tracker" get="/tracker">Clear search and filters</a></p>{{end}}
 {{if .Groups}}{{range $gi, $g := .Groups}}<section class="appgroup tone-{{groupTone .Title}}" aria-labelledby="g-{{$gi}}"><div class="appgroup-head"><h2 id="g-{{$gi}}">{{groupIcon .Title}}{{.Title}} <span class="count">{{len .Jobs}}</span></h2><p class="meta">{{.Note}}</p></div>
 <ol class="applist">{{range .Jobs}}<li class="appitem">
-<div class="app-main"><h3 style="view-transition-name:job-{{.ID}}"><a href="/track?id={{.ID}}&back=/tracker">{{.Title}}</a></h3><p class="job-company">{{.Company}}</p></div>
+<div class="app-main"><h3 style="view-transition-name:job-{{.ID}}"><a href="/track?id={{.ID}}&back={{$.Self}}">{{.Title}}</a></h3><p class="job-company">{{.Company}}</p></div>
 <dl class="app-facts">
 <div><dt>Stage</dt><dd><span class="flag dot stage tone-{{statusTone .Status}}">{{.Status}}</span></dd></div>
 <div><dt>Follow-up</dt><dd>{{if .Followup}}<span class="flag tone-{{followTone .Followup .Status}}">{{icon "bell"}}{{fmtShort .Followup}}</span> <span class="rel">{{relDay .Followup}}</span>{{else}}None set{{end}}</dd></div>
@@ -15,10 +28,10 @@ const trackerHTML = `
 <div><dt>Last activity</dt><dd>{{if .LastActivity}}{{fmtShort .LastActivity}}{{else}}None logged{{end}}</dd></div>
 {{if .Contact}}<div class="wide"><dt>Contact</dt><dd>{{.Contact}}</dd></div>{{end}}
 </dl>
-<a class="btn secondary" href="/track?id={{.ID}}&back=/tracker">{{icon "apps"}}Open application<span class="sr">: {{.Title}} at {{.Company}}</span></a>
+<a class="btn secondary" href="/track?id={{.ID}}&back={{$.Self}}">{{icon "apps"}}Open application<span class="sr">: {{.Title}} at {{.Company}}</span></a>
 </li>{{end}}</ol></section>{{end}}
-{{else}}<div class="empty"><span class="empty-glyph" aria-hidden="true">{{icon "apps"}}</span><h2>No applications yet</h2><p>Find a job worth pursuing, choose <strong>Review and track</strong>, and save its status. It will appear here.</p><a class="btn primary" href="/">{{icon "jobs"}}Browse jobs</a></div>{{end}}
-{{template "bottom"}}{{end}}
+{{else if .Total}}<div class="empty"><span class="empty-glyph" aria-hidden="true">{{icon "search"}}</span><h2>No applications match</h2><p>Try a shorter search, another stage, or show all {{.Total}} applications.</p><a class="btn primary" href="/tracker" get="/tracker">{{icon "close"}}Clear search and filters</a></div>
+{{else}}<div class="empty"><span class="empty-glyph" aria-hidden="true">{{icon "apps"}}</span><h2>No applications yet</h2><p>Find a job worth pursuing, choose <strong>Review and track</strong>, and save its status. It will appear here.</p><a class="btn primary" href="/">{{icon "jobs"}}Browse jobs</a></div>{{end}}{{end}}
 
 {{define "resume"}}{{template "top" .Nav}}
 {{if .Back}}<p class="crumb"><a href="{{.Back}}">{{.BackLabel}}</a></p>{{end}}

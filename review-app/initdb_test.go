@@ -24,7 +24,7 @@ func TestInitJobsBuildsAWorkingFreshDatabase(t *testing.T) {
 	if _, err = db.Exec(`INSERT INTO jobs(company,title,url,date_found,posting_date) VALUES('Acme','Engineer','https://example.com/1','2026-11-24','2026-11-20')`); err != nil {
 		t.Fatal(err)
 	}
-	p, err := loadNextPage(db, 1)
+	p, err := loadNextPage(db, "", 1)
 	if err != nil {
 		t.Fatal(err)
 	}

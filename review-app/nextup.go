@@ -6,7 +6,9 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 )
 
 // Next up shows one job at a time from the queue of jobs still worth applying
@@ -33,9 +35,70 @@ const nextUpWhere = `coalesce((SELECT a.status FROM applications a WHERE a.job_i
 const nextUpOrder = `(score_total IS NULL OR trim(score_total) = '') ASC, CAST(score_total AS INTEGER) DESC,
 	(CASE priority WHEN 'High' THEN 1 WHEN 'Medium' THEN 2 WHEN 'Low' THEN 3 ELSE 4 END) ASC, company COLLATE NOCASE ASC, id ASC`
 
-// nextUpIDs returns the queue in order.
-func nextUpIDs(db *sql.DB) ([]int64, error) {
-	rows, err := db.Query("SELECT id FROM jobs WHERE " + nextUpWhere + " ORDER BY " + nextUpOrder)
+// Every job in the queue is at some stage short of applying. The radio group
+// on Next up narrows the queue to one stage, so the owner can work through,
+// say, everything they are preparing before turning to new leads.
+type NextStage struct {
+	Key, Label string
+	Count      int
+	On         bool
+}
+
+var nextStages = []NextStage{{Key: "", Label: "All not applied"}, {Key: "new", Label: "New leads"}, {Key: "interested", Label: "Interested"}, {Key: "preparing", Label: "Preparing"}}
+
+// nextStageOf is a job's stage: its application's, else its own status.
+const nextStageOf = `coalesce((SELECT a.status FROM applications a WHERE a.job_id = jobs.id), jobs.status, '')`
+
+// validStage keeps a known stage key and turns anything else into "" (all).
+func validStage(s string) string {
+	for _, st := range nextStages {
+		if st.Key == s {
+			return s
+		}
+	}
+	return ""
+}
+
+func stageWhere(stage string) string {
+	switch stage {
+	case "new":
+		return " AND " + nextStageOf + " NOT IN ('Interested','Preparing')"
+	case "interested":
+		return " AND " + nextStageOf + " = 'Interested'"
+	case "preparing":
+		return " AND " + nextStageOf + " = 'Preparing'"
+	}
+	return ""
+}
+
+// stageCounts counts the queue by stage, with stage marking the chosen one.
+func stageCounts(db *sql.DB, stage string) ([]NextStage, error) {
+	out := append([]NextStage(nil), nextStages...)
+	var interested, preparing, total int
+	err := db.QueryRow(`SELECT count(*), coalesce(sum(s = 'Interested'), 0), coalesce(sum(s = 'Preparing'), 0)
+		FROM (SELECT `+nextStageOf+` AS s FROM jobs WHERE `+nextUpWhere+`)`).Scan(&total, &interested, &preparing)
+	if err != nil {
+		return nil, err
+	}
+	for i := range out {
+		out[i].On = out[i].Key == stage
+		switch out[i].Key {
+		case "":
+			out[i].Count = total
+		case "new":
+			out[i].Count = total - interested - preparing
+		case "interested":
+			out[i].Count = interested
+		case "preparing":
+			out[i].Count = preparing
+		}
+	}
+	return out, nil
+}
+
+// nextUpIDs returns the queue, or one stage of it, in order.
+func nextUpIDs(db *sql.DB, stage string) ([]int64, error) {
+	rows, err := db.Query("SELECT id FROM jobs WHERE " + nextUpWhere + stageWhere(stage) + " ORDER BY " + nextUpOrder)
 	if err != nil {
 		return nil, err
 	}
@@ -67,32 +130,54 @@ type NextPage struct {
 	After                  *Job // the job that comes next, previewed under the pager
 	Notice                 *NextNotice
 	Fragment               bool
+	Stage                  string // "" for the whole queue
+	StageLabel             string
+	Stages                 []NextStage
+	// FocusTitle moves focus to the job title after a swap. A change of
+	// stage leaves focus on the radio button, so arrow keys keep cycling.
+	FocusTitle bool
 }
 
-func nextURL(n int) string {
-	if n <= 1 {
+func nextURL(stage string, n int) string {
+	v := url.Values{}
+	if n > 1 {
+		v.Set("n", strconv.Itoa(n))
+	}
+	if stage != "" {
+		v.Set("stage", stage)
+	}
+	if len(v) == 0 {
 		return "/next"
 	}
-	return "/next?n=" + strconv.Itoa(n)
+	return "/next?" + v.Encode()
 }
 
-func loadNextPage(db *sql.DB, n int) (NextPage, error) {
-	ids, err := nextUpIDs(db)
+func loadNextPage(db *sql.DB, stage string, n int) (NextPage, error) {
+	stage = validStage(stage)
+	ids, err := nextUpIDs(db, stage)
 	if err != nil {
 		return NextPage{}, err
 	}
-	p := NextPage{Total: len(ids), FirstURL: nextURL(1)}
+	p := NextPage{Total: len(ids), FirstURL: nextURL(stage, 1), Stage: stage}
+	if p.Stages, err = stageCounts(db, stage); err != nil {
+		return p, err
+	}
+	for _, st := range p.Stages {
+		if st.On {
+			p.StageLabel = st.Label
+		}
+	}
 	if p.Total == 0 {
-		p.Self = nextURL(1)
+		p.Self = nextURL(stage, 1)
 		return p, nil
 	}
 	p.N = min(max(n, 1), p.Total)
-	p.Self = nextURL(p.N)
+	p.Self = nextURL(stage, p.N)
 	if p.N > 1 {
-		p.PrevURL = nextURL(p.N - 1)
+		p.PrevURL = nextURL(stage, p.N-1)
 	}
 	if p.N < p.Total {
-		p.NextURL = nextURL(p.N + 1)
+		p.NextURL = nextURL(stage, p.N+1)
 		after, err := loadJob(db, ids[p.N])
 		if err != nil {
 			return p, err
@@ -103,9 +188,10 @@ func loadNextPage(db *sql.DB, n int) (NextPage, error) {
 	return p, err
 }
 
-// queuePosition is the 1-based place of a job in the queue, or 0.
-func queuePosition(db *sql.DB, id int64) (int, error) {
-	ids, err := nextUpIDs(db)
+// queuePosition is the 1-based place of a job in the queue (or the stage
+// of it), or 0.
+func queuePosition(db *sql.DB, stage string, id int64) (int, error) {
+	ids, err := nextUpIDs(db, stage)
 	for i, v := range ids {
 		if v == id {
 			return i + 1, err
@@ -139,12 +225,25 @@ func registerNextUp(db *sql.DB) {
 		if p.Total > 0 {
 			title = fmt.Sprintf("Next up, %d of %d: %s", p.N, p.Total, p.Job.Title)
 		}
+		if p.Stage != "" {
+			title += " (" + p.StageLabel + ")"
+		}
 		p.Nav = loadNav(db, "next", title)
 		if isFragmentRequest(r) {
 			p.Fragment = true
-			writeFragments(w, urlHeader, p.Self,
-				Fragment{Target: "#next-view(innerHTML)", Name: "nextview", Data: p},
-				Fragment{Target: "title(innerHTML)", HTML: template.HTML(template.HTMLEscapeString(title + " · Job search"))})
+			// The stage radio group sends keep_focus: it is left in place
+			// so focus stays on it. Any other swap redraws it too, for the
+			// new counts or the stage after Back in the browser.
+			keep := r.FormValue("keep_focus") != ""
+			p.FocusTitle = !keep && p.Notice == nil
+			frags := []Fragment{
+				{Target: "#next-view(innerHTML)", Name: "nextview", Data: p},
+				{Target: "title(innerHTML)", HTML: template.HTML(template.HTMLEscapeString(title + " · Job search"))},
+			}
+			if !keep {
+				frags = append(frags, Fragment{Target: "#next-stages(innerHTML)", Name: "nextstages", Data: p})
+			}
+			writeFragments(w, urlHeader, p.Self, frags...)
 			return
 		}
 		render(w, "nextup", p)
@@ -157,7 +256,7 @@ func registerNextUp(db *sql.DB) {
 		}
 		q := r.URL.Query()
 		n, _ := strconv.Atoi(q.Get("n"))
-		p, err := loadNextPage(db, n)
+		p, err := loadNextPage(db, q.Get("stage"), n)
 		if err != nil {
 			log.Printf("next up: %v", err)
 			http.Error(w, "Could not read the jobs database", 500)
@@ -200,6 +299,7 @@ func registerNextUp(db *sql.DB) {
 			return
 		}
 		n, _ := strconv.Atoi(r.FormValue("n"))
+		stage := validStage(r.FormValue("stage"))
 		var notice *NextNotice
 		var redirect string
 		switch r.FormValue("action") {
@@ -217,7 +317,7 @@ func registerNextUp(db *sql.DB) {
 				http.Error(w, "Could not save", 500)
 				return
 			}
-			pos, err := queuePosition(db, id)
+			pos, err := queuePosition(db, stage, id)
 			if err != nil {
 				logTracker(err)
 				http.Error(w, "Could not read the jobs database", 500)
@@ -233,10 +333,16 @@ func registerNextUp(db *sql.DB) {
 			return
 		}
 		if !isFragmentRequest(r) {
-			http.Redirect(w, r, "/next?n="+strconv.Itoa(max(n, 1))+"&"+redirect, http.StatusSeeOther)
+			to := nextURL(stage, n)
+			if strings.Contains(to, "?") {
+				to += "&" + redirect
+			} else {
+				to += "?" + redirect
+			}
+			http.Redirect(w, r, to, http.StatusSeeOther)
 			return
 		}
-		p, err := loadNextPage(db, n)
+		p, err := loadNextPage(db, stage, n)
 		if err != nil {
 			log.Printf("next up: %v", err)
 			http.Error(w, "Could not read the jobs database", 500)

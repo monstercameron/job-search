@@ -27,7 +27,7 @@ func loadNav(db *sql.DB, active, title string) Nav {
 // a crafted link cannot send the browser to another site after a save.
 func safeBack(s string) string {
 	if s == "/" || s == "/tracker" || s == "/resume" || s == "/profile" || s == "/next" ||
-		strings.HasPrefix(s, "/?") || strings.HasPrefix(s, "/track?id=") || strings.HasPrefix(s, "/next?n=") {
+		strings.HasPrefix(s, "/?") || strings.HasPrefix(s, "/track?id=") || strings.HasPrefix(s, "/next?") || strings.HasPrefix(s, "/tracker?") {
 		if !strings.ContainsAny(s, "\\\r\n") {
 			return s
 		}
@@ -182,6 +182,7 @@ var pageFuncs = template.FuncMap{
 	"contactIcon":    contactIcon,
 	"iconSprite":     func() template.HTML { return iconSprite },
 	"webBuild":       func() bool { return webBuild },
+	"showID":         showID,
 	"storageNotices": storageNotices,
 	"relDay":         relDay,
 	"plural": func(n int, one, many string) string {

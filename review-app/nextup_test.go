@@ -30,7 +30,7 @@ func seedNextUp(t *testing.T) {
 
 func TestNextUpQueueSkipsAppliedAndClosedJobs(t *testing.T) {
 	seedNextUp(t)
-	ids, err := nextUpIDs(testDB)
+	ids, err := nextUpIDs(testDB, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +44,7 @@ func TestNextUpQueueSkipsAppliedAndClosedJobs(t *testing.T) {
 func TestNextUpOrdersTiesByPriority(t *testing.T) {
 	resetJobs(t, `INSERT INTO jobs(id,company,title,url,score_total,priority) VALUES
 		(1,'A','Low','https://example.com/a',80,'Low'),(2,'B','High','https://example.com/b',80,'High'),(3,'C','Medium','https://example.com/c',80,'Medium')`)
-	ids, err := nextUpIDs(testDB)
+	ids, err := nextUpIDs(testDB, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +152,7 @@ func TestNotInterestedRemovesFromQueueAndUndoPutsItBack(t *testing.T) {
 	if strings.Contains(body, `id="next-title" tabindex="-1" autofocus`) {
 		t.Error("only the notice should take focus")
 	}
-	if ids, _ := nextUpIDs(testDB); !reflect.DeepEqual(ids, []int64{4, 7}) {
+	if ids, _ := nextUpIDs(testDB, ""); !reflect.DeepEqual(ids, []int64{4, 7}) {
 		t.Fatalf("queue after dismiss %v", ids)
 	}
 	// The job page and the Jobs list say so, and offer the way back.
@@ -165,7 +165,7 @@ func TestNotInterestedRemovesFromQueueAndUndoPutsItBack(t *testing.T) {
 	if !strings.Contains(body, "Put “Queue First” back in Next up.") || !strings.Contains(body, ">Queue First</a>") || strings.Contains(body, `value="restore"`) {
 		t.Errorf("restore should show the job that came back, without another Undo:\n%s", body)
 	}
-	if ids, _ := nextUpIDs(testDB); !reflect.DeepEqual(ids, []int64{1, 4, 7}) {
+	if ids, _ := nextUpIDs(testDB, ""); !reflect.DeepEqual(ids, []int64{1, 4, 7}) {
 		t.Fatalf("queue after restore %v", ids)
 	}
 }
@@ -197,7 +197,60 @@ func TestNotInterestedNeedsLocalOrigin(t *testing.T) {
 	if w := nextPost(url.Values{"action": {"explode"}, "job_id": {"1"}}, true, localOrigin); w.Code != http.StatusBadRequest {
 		t.Errorf("unknown action: status %d", w.Code)
 	}
-	if ids, _ := nextUpIDs(testDB); len(ids) != 3 {
+	if ids, _ := nextUpIDs(testDB, ""); len(ids) != 3 {
 		t.Errorf("nothing should have been dismissed: %v", ids)
+	}
+}
+
+// The stage radio group narrows the queue, counts each stage, and every link
+// and form on the page keeps the chosen stage.
+func TestNextUpStageNarrowsTheQueue(t *testing.T) {
+	seedNextUp(t)
+	for stage, want := range map[string][]int64{"": {1, 4, 7}, "new": {1, 7}, "preparing": {4}, "interested": nil} {
+		if ids, err := nextUpIDs(testDB, stage); err != nil || !reflect.DeepEqual(ids, want) {
+			t.Errorf("stage %q: %v, %v, want %v", stage, ids, err, want)
+		}
+	}
+	body := nextRequest("/next?stage=new", false).Body.String()
+	for _, want := range []string{
+		`<input type="radio" name="stage" value="new" checked><span>New leads <span class="count">2</span>`,
+		`<input type="radio" name="stage" value=""><span>All not applied <span class="count">3</span>`,
+		`<span>Preparing <span class="count">1</span>`, `<span>Interested <span class="count">0</span>`,
+		`<strong>1</strong> of 2`, `href="/next?n=2&amp;stage=new"`, `name="stage" value="new"`,
+		"<title>Next up, 1 of 2: Queue First (New leads)",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("stage page missing %q", want)
+		}
+	}
+	// A changed stage from the radio group leaves the group and focus alone.
+	w := nextRequest("/next?stage=preparing&keep_focus=1", true)
+	b := w.Body.String()
+	if w.Header().Get("Push-Url") != "/next?stage=preparing" || strings.Contains(b, "#next-stages") || strings.Contains(b, "autofocus") || !strings.Contains(b, ">Queue Second</a>") {
+		t.Errorf("stage change: Push-Url %q, body:\n%s", w.Header().Get("Push-Url"), b)
+	}
+	// Paging redraws the group (for Back in the browser) and focuses the title.
+	if b := nextRequest("/next?n=2&stage=new", true).Body.String(); !strings.Contains(b, `<fragment target="#next-stages(innerHTML)">`) || !strings.Contains(b, `id="next-title" tabindex="-1" autofocus`) {
+		t.Error("paging should redraw the stage group and focus the title")
+	}
+	// An empty stage says so and offers the whole queue; a bad stage is all.
+	if b := nextRequest("/next?stage=interested", false).Body.String(); !strings.Contains(b, "No jobs at “Interested”") || !strings.Contains(b, "Show all not applied") {
+		t.Error("an empty stage should say so")
+	}
+	if b := nextRequest("/next?stage=nonsense", false).Body.String(); !strings.Contains(b, `value="" checked`) || !strings.Contains(b, `<strong>1</strong> of 3`) {
+		t.Error("an unknown stage should show the whole queue")
+	}
+	// Not interested inside a stage stays in it, with and without JavaScript.
+	w = nextPost(url.Values{"action": {"dismiss"}, "job_id": {"1"}, "n": {"1"}, "stage": {"new"}}, false, localOrigin)
+	if w.Header().Get("Location") != "/next?stage=new&removed=1" {
+		t.Errorf("redirect %q", w.Header().Get("Location"))
+	}
+	w = nextPost(url.Values{"action": {"restore"}, "job_id": {"1"}, "stage": {"new"}}, true, localOrigin)
+	b = w.Body.String()
+	if w.Header().Get("Replace-Url") != "/next?stage=new" || !strings.Contains(b, ">Queue First</a>") || !strings.Contains(b, `<span>New leads <span class="count">2</span>`) {
+		t.Errorf("restore in a stage: Replace-Url %q", w.Header().Get("Replace-Url"))
+	}
+	if safeBack("/next?n=2&stage=new") == "" {
+		t.Error("a staged Next up page should be a valid Back link")
 	}
 }

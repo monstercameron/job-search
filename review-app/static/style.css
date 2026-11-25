@@ -100,7 +100,7 @@ p { margin: 0; }
 .choices { border: 0; margin: 0; padding: 0; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
 .choices legend { float: left; margin-right: 2px; padding: 0; font-size: 13px; font-weight: 600; color: var(--muted); }
 .choice-row { display: flex; flex-wrap: wrap; gap: 6px; }
-.finder .choice { position: relative; display: inline-flex; color: var(--ink); font-size: 14px; font-weight: 500; cursor: pointer; }
+.finder .choice, .next-stages .choice { position: relative; display: inline-flex; color: var(--ink); font-size: 14px; font-weight: 500; cursor: pointer; }
 .choice input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
 .choice span { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 0 13px; border: 1px solid var(--field); border-radius: 17px; background: var(--surface); transition: background-color var(--fast) var(--ease-out), border-color var(--fast) var(--ease-out), color var(--fast) var(--ease-out), transform var(--fast) var(--ease-out); }
 .choice span::before { content: ""; width: 0; height: 9px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; opacity: 0; transform: rotate(45deg) scale(.4); margin: -3px -6px 0 0; transition: width var(--fast) var(--ease-out), opacity var(--fast) var(--ease-out), transform var(--mid) var(--ease-out), margin var(--fast) var(--ease-out); }
@@ -871,3 +871,20 @@ svg.chart .c-dot { fill: var(--c); stroke: var(--surface); stroke-width: 2.5; }
 .empty-actions form { margin: 0; }
 .site-alert { margin: 0 0 20px; }
 .site-alert a { color: inherit; font-weight: 600; }
+
+/* Next up: the stage radio group above the pager. */
+.next-stages { margin: 0 0 18px; }
+.next-stages .choice .count { display: inline-block; min-height: 0; padding: 0 6px; margin-left: 2px; border: 0; border-radius: 10px; background: var(--canvas); transition: none; }
+.next-stages .choice .count::before { content: none; }
+.next-stages .choice input:checked + span .count { background: rgba(255, 255, 255, .2); color: #fff; }
+.next-stages .choice input:focus-visible + span { outline: 2px solid var(--cobalt); outline-offset: 2px; }
+
+/* Applications: search, stage, sort and the Show choices. */
+.app-finder { margin-bottom: 24px; }
+.app-finder .finder-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 560px) { .app-finder .finder-filters { grid-template-columns: minmax(0, 1fr); } }
+.app-finder .choice .count { display: inline-block; min-height: 0; padding: 0 6px; margin-left: 2px; border: 0; border-radius: 10px; background: var(--canvas); transition: none; }
+.app-finder .choice .count::before { content: none; }
+.app-finder .choice input:checked + span .count { background: rgba(255, 255, 255, .2); color: #fff; }
+.results-line { margin: 0 0 16px; color: var(--muted); }
+@media (min-width: 1101px) { .app-finder { grid-template-columns: minmax(280px, 2fr) minmax(0, 3fr) auto; } }
