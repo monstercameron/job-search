@@ -18,10 +18,19 @@ import (
 
 const svgW = 400.0
 
+// A bar may have a second segment (N2, Class2) drawn after the first, such
+// as preferred after required.
 type bar struct {
-	Label, Value string
-	N            float64
-	Class        string
+	Label, Value  string
+	N, N2         float64
+	Class, Class2 string
+}
+
+// rightRounded is a bar segment from x0 to x1 whose right end is rounded.
+func rightRounded(x0, x1, y0, y1 float64) string {
+	r := math.Min(4, math.Min((x1-x0)/2, (y1-y0)/2))
+	return fmt.Sprintf("M%s,%s H%s Q%s,%s %s,%s V%s Q%s,%s %s,%s H%sZ",
+		f1(x0), f1(y0), f1(x1-r), f1(x1), f1(y0), f1(x1), f1(y0+r), f1(y1-r), f1(x1), f1(y1), f1(x1-r), f1(y1), f1(x0))
 }
 
 type col struct {
@@ -71,15 +80,66 @@ func hbarsSVG(title string, bars []bar, max float64) template.HTML {
 		fmt.Fprintf(sb, `<text class="c-label" x="0" y="%s">%s<title>%s</title></text>`, f1(y+13), esc(trunc(b.Label, 38)), esc(b.Label))
 		fmt.Fprintf(sb, `<text class="c-value" x="%s" y="%s" text-anchor="end">%s</text>`, f1(svgW), f1(y+13), esc(b.Value))
 		fmt.Fprintf(sb, `<rect class="c-track" x="0" y="%s" width="%s" height="3" rx="1.5"/>`, f1(y+27), f1(svgW))
+		w1 := 0.0
 		if b.N > 0 {
-			w := math.Max(b.N/max*svgW, 4)
-			r := math.Min(4, w/2)
-			fmt.Fprintf(sb, `<path class="c-%s" d="M0,%s H%s Q%s,%s %s,%s V%s Q%s,%s %s,%s H0Z"/>`, b.Class,
-				f1(y+19), f1(w-r), f1(w), f1(y+19), f1(w), f1(y+19+r), f1(y+27-r), f1(w), f1(y+27), f1(w-r), f1(y+27))
+			w1 = math.Max(b.N/max*svgW, 4)
+			if b.N2 > 0 {
+				fmt.Fprintf(sb, `<rect class="c-%s" x="0" y="%s" width="%s" height="8"/>`, b.Class, f1(y+19), f1(w1))
+			} else {
+				fmt.Fprintf(sb, `<path class="c-%s" d="%s"/>`, b.Class, rightRounded(0, w1, y+19, y+27))
+			}
+		}
+		if b.N2 > 0 {
+			w2 := math.Max(b.N2/max*svgW, 4)
+			fmt.Fprintf(sb, `<path class="c-%s" d="%s"/>`, b.Class2, rightRounded(w1, w1+w2, y+19, y+27))
 		}
 	}
 	sb.WriteString(`</svg>`)
 	return template.HTML(sb.String())
+}
+
+type tileVal struct {
+	N            int
+	Class, Title string
+}
+
+// tileMapSVG draws the US as a grid of equal tiles, one per state and DC,
+// each shaded by its class and labelled with its code and count. A state
+// with no value is a plain tile. home, if set, outlines one state.
+func tileMapSVG(title, desc string, vals map[string]tileVal, home string) template.HTML {
+	const cols, rows, gap = 12.0, 8.0, 3.0
+	s := svgW / cols
+	h := s * rows
+	var b strings.Builder
+	fmt.Fprintf(&b, `<svg class="chart map" viewBox="0 0 %s %s" width="%s" role="img" aria-label="%s"><title>%s</title>`,
+		f1(svgW), f1(h), f1(svgW), esc(title+". "+desc), esc(title))
+	for _, st := range usStates {
+		v := vals[st.Code]
+		cls := v.Class
+		if cls == "" {
+			cls = "m0"
+		}
+		t := v.Title
+		if t == "" {
+			t = st.Name + ": none"
+		}
+		x, y := s*float64(st.Col), s*float64(st.Row)
+		w := s - gap
+		cx := x + w/2
+		fmt.Fprintf(&b, `<g class="tile c-%s"><title>%s</title><rect x="%s" y="%s" width="%s" height="%s" rx="4"/>`, cls, esc(t), f1(x), f1(y), f1(w), f1(w))
+		if v.N > 0 {
+			fmt.Fprintf(&b, `<text class="t-ab" x="%s" y="%s" text-anchor="middle">%s</text><text class="t-n" x="%s" y="%s" text-anchor="middle">%d</text>`,
+				f1(cx), f1(y+12.5), st.Code, f1(cx), f1(y+25), v.N)
+		} else {
+			fmt.Fprintf(&b, `<text class="t-ab" x="%s" y="%s" text-anchor="middle">%s</text>`, f1(cx), f1(y+w/2+3.5), st.Code)
+		}
+		b.WriteString(`</g>`)
+		if st.Code == home {
+			fmt.Fprintf(&b, `<rect class="c-home" x="%s" y="%s" width="%s" height="%s" rx="5"/>`, f1(x-1.5), f1(y-1.5), f1(w+3), f1(w+3))
+		}
+	}
+	b.WriteString(`</svg>`)
+	return template.HTML(b.String())
 }
 
 func niceStep(raw float64) float64 {

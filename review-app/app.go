@@ -16,7 +16,7 @@ import (
 // migrateAll adds every table and column the app needs. Each step only adds
 // what is missing, so it is safe on every start.
 func migrateAll(db *sql.DB) error {
-	for _, step := range []func(*sql.DB) error{migrateTracker, migrateIndustry, migrateProfile, migrateNextUp, migrateMetrics} {
+	for _, step := range []func(*sql.DB) error{migrateTracker, migrateIndustry, migrateProfile, migrateNextUp, migrateMetrics, migrateInsights} {
 		if err := step(db); err != nil {
 			return err
 		}

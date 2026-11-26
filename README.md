@@ -11,7 +11,7 @@ The app never submits an application or sends a message. The assistant fills the
 - **Applications:** tracked jobs grouped as Follow up now, In progress, Not applied yet and Closed. Each job has a page for its stage, dates, contact, notes, and one timeline of messages, interviews and status changes.
 - **Profile:** the facts your résumé is built from (contact details, summary, experience, skills, projects, education), plus a list of claims to keep accurate.
 - **Résumé:** your base résumé, used to check each job's required skills against what you have.
-- **Metrics:** a pipeline funnel, response rate with its 95% range, applications per week, the match-score spread, leads by market and arrangement, and listing age. Charts are inline SVG written in Go, each with a table of the same numbers.
+- **Metrics:** a pipeline funnel, response rate with its 95% range, applications per week, the match-score spread, leads by market and arrangement, and listing age, plus maps of where companies are headquartered and which states each lead is open to, and what jobs ask for (languages, frameworks, platforms, tools, practices, domains, experience, degree, seniority, and the asks missing from your Profile). Charts are inline SVG written in Go, each with a table of the same numbers.
 - **Your data:** export the whole tracker as one SQLite file from the link at the foot of every page. The browser version also imports one, so you can move between the desktop app and the browser, or between browsers.
 - **Résumé A/B test:** label each application with the résumé version it went out with, and the Metrics page compares replies, interviews and offers per version. It shows counts only until each version has 10 applications, then compares response rates with a 95% interval for the difference.
 
@@ -79,7 +79,7 @@ Applying to a job takes three tools in order:
 2. `save_tailored_resume` checks the tailored résumé against the profile's accuracy rules and common applicant-tracking-system problems. It refuses a résumé that breaks a hard rule, such as a missing EXPERIENCE heading or characters a parser cannot read. It warns about softer problems, such as figures that are not in the profile or dates without a month. It then exports a text-based PDF, a Word file and plain text.
 3. `track_application` records the stage, and the submission once you have seen the employer's confirmation.
 
-The other tools are `search_jobs`, `get_job`, `create_job`, `update_job`, `list_applications`, `update_application`, `save_interview`, `save_communication`, `save_document`, `set_base_resume` and `compare_resume`.
+The other tools are `search_jobs`, `get_job`, `create_job`, `update_job`, `list_applications`, `update_application`, `save_interview`, `save_communication`, `save_document`, `set_base_resume`, `compare_resume`, `set_company`, `set_job_profile`, `get_market_insights` and `list_profile_gaps`.
 
 The [apply-to-job skill](.claude/skills/apply-to-job/SKILL.md) runs a whole application with these tools: tailoring, filling the form, a blind review by a second agent, and recording the result. It drives the employer's form in a browser through Claude Code's browser tools, the built-in browser pane or Claude in Chrome. Before using it, copy [`owner.example.md`](.claude/skills/apply-to-job/owner.example.md) to `owner.md` in the same folder and fill in your name, contact details, standing answers and personal rules. `owner.md` is git-ignored. [AGENTS.md](AGENTS.md) is the guide for any agent working in this repository.
 

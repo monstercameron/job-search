@@ -389,6 +389,8 @@ type MetricsPage struct {
 	Industry ChartData
 	Where    ChartData
 	Age      ChartData
+	Places   PlacesView
+	Asks     AsksView
 	Leads    string
 	Closed   string // quiet line about closed postings left out, empty when none
 	Notice   string
@@ -490,6 +492,11 @@ func loadMetrics(db *sql.DB, now time.Time) (MetricsPage, error) {
 	p.Industry = industryChart(jobs)
 	p.Where = workplaceChart(jobs)
 	p.Age = ageChart(jobs)
+	in, err := computeInsights(db)
+	if err != nil {
+		return p, err
+	}
+	p.Places, p.Asks = buildPlaces(in), buildAsks(in)
 	return p, nil
 }
 
@@ -701,7 +708,7 @@ func topBars(counts map[string]int, keep int, unknown string) ([]bar, [][]string
 func maxBar(bars []bar) float64 {
 	m := 0.0
 	for _, b := range bars {
-		m = math.Max(m, b.N)
+		m = math.Max(m, b.N+b.N2)
 	}
 	return m
 }

@@ -29,7 +29,12 @@ func metricsSetup(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for _, q := range []string{"DELETE FROM interviews", "DELETE FROM communications", "DELETE FROM application_documents"} {
+	for i := 0; i < 2; i++ {
+		if err := migrateInsights(testDB); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, q := range []string{"DELETE FROM interviews", "DELETE FROM communications", "DELETE FROM application_documents", "DELETE FROM job_locations", "DELETE FROM job_requirements", "DELETE FROM companies"} {
 		if _, err := testDB.Exec(q); err != nil {
 			t.Fatal(err)
 		}

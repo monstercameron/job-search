@@ -156,7 +156,7 @@ func runMCP(db *sql.DB) error {
 
 // newMCPServer builds the tool set shared by the stdio and HTTP transports.
 func newMCPServer(db *sql.DB) *mcp.Server {
-	s := mcp.NewServer(&mcp.Implementation{Name: "job-search-tracker", Version: "1.1.0"}, &mcp.ServerOptions{Instructions: "Job search tracker for one person. To apply to a job: get_application_kit, then save_tailored_resume, then track_application. Never invent facts, never claim a degree, never enter the user's X/Twitter account, and let the user submit applications themselves."})
+	s := mcp.NewServer(&mcp.Implementation{Name: "job-search-tracker", Version: "1.1.0"}, &mcp.ServerOptions{Instructions: "Job search tracker for one person. To apply to a job: get_application_kit, then save_tailored_resume, then track_application. When you save or read a job, record its company's headquarters with set_company and its locations and requirements with set_job_profile; list_profile_gaps shows what is missing. Never invent facts, never claim a degree, never enter the user's X/Twitter account, and let the user submit applications themselves."})
 	mcp.AddTool(s, &mcp.Tool{Name: "search_jobs", Description: "Search and filter saved jobs. Results are paginated 25 per page."}, func(ctx context.Context, _ *mcp.CallToolRequest, in mcpSearch) (*mcp.CallToolResult, map[string]any, error) {
 		v := url.Values{}
 		for k, x := range map[string]string{"q": in.Query, "status": in.Status, "priority": in.Priority, "arrangement": in.Arrangement, "industry": in.Industry, "sort": in.Sort, "direction": in.Direction} {
@@ -190,6 +190,9 @@ func newMCPServer(db *sql.DB) *mcp.Server {
 			return nil, nil, fmt.Errorf("job not found")
 		}
 		out := map[string]any{"job": jobs[0]}
+		if out["profile"], e = jobProfile(ctx, db, in.JobID); e != nil {
+			return nil, nil, e
+		}
 		rows, e = db.QueryContext(ctx, "SELECT * FROM applications WHERE job_id=?", in.JobID)
 		if e != nil {
 			return nil, nil, e
@@ -495,6 +498,7 @@ func newMCPServer(db *sql.DB) *mcp.Server {
 		return nil, map[string]any{"matched": matched, "missing_or_needs_review": missing, "tips": resumeTips(resume), "limitations": "Literal text comparison, not an ATS score or prediction."}, nil
 	})
 	addApplyTools(s, db)
+	addInsightTools(s, db)
 	return s
 }
 func validateLocalTime(value string) error {

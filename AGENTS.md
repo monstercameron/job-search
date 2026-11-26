@@ -30,14 +30,15 @@ The skill holds the full procedure, the generic form answers, the blind review, 
 
 ## Tools
 
-- **Web app:** http://127.0.0.1:8080/ (job page: `/track?id=<job id>`; the queue of jobs not yet applied to and not marked "Not interested", best match first: `/next`; charts and the résumé A/B comparison: `/metrics`).
+- **Web app:** http://127.0.0.1:8080/ (job page: `/track?id=<job id>`; the queue of jobs not yet applied to and not marked "Not interested", best match first: `/next`; charts, the résumé A/B comparison, the headquarters and work-from maps and what jobs ask for: `/metrics`).
 - **MCP tools:** use the `job-search` MCP server when it is connected. Otherwise call any tool from the command line, from the repository root:
   ```powershell
   & ".\review-app\job-review-mcp.exe" -db ".\job_search.sqlite3" -call get_application_kit -args '{"job_id":62}'
   ```
   `-call list` lists the tools. Pass long arguments, such as a résumé, with `-args-file <path>`.
 - **Adding a job:** `create_job` with the posting's own URL. Pass `posting_date` (YYYY-MM-DD) whenever the posting shows when it was published; `date_found` (the day it was added) is set for you.
-- **Applying:** `get_application_kit`, then `save_tailored_resume`, then `track_application`. When a résumé test is running, label each application with its version (`variant` / `resume_variant`); the skill's "Résumé A/B test" section says how to pick it. The other tools are `search_jobs`, `get_job`, `create_job`, `update_job`, `list_applications`, `update_application`, `save_interview`, `save_communication`, `save_document`, `set_base_resume` and `compare_resume`.
+- **Company and job facts:** after `create_job`, record the company's headquarters, size and ownership with `set_company`, and the job's locations, requirements (with `owner_has` judged against the Profile), years of experience, degree and seniority with `set_job_profile`. You decide what the posting means; the tools only check formats. `list_profile_gaps` lists what is still missing.
+- **Applying:** `get_application_kit`, then `save_tailored_resume`, then `track_application`. When a résumé test is running, label each application with its version (`variant` / `resume_variant`); the skill's "Résumé A/B test" section says how to pick it. The other tools are `search_jobs`, `get_job`, `create_job`, `update_job`, `list_applications`, `update_application`, `save_interview`, `save_communication`, `save_document`, `set_base_resume`, `compare_resume`, `set_company`, `set_job_profile`, `get_market_insights` and `list_profile_gaps`.
 
 ## Working on the app
 

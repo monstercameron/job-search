@@ -888,3 +888,32 @@ svg.chart .c-dot { fill: var(--c); stroke: var(--surface); stroke-width: 2.5; }
 .app-finder .choice input:checked + span .count { background: rgba(255, 255, 255, .2); color: #fff; }
 .results-line { margin: 0 0 16px; color: var(--muted); }
 @media (min-width: 1101px) { .app-finder { grid-template-columns: minmax(280px, 2fr) minmax(0, 3fr) auto; } }
+
+/* Metrics: places and requirements. The map tiles use one slate ramp, light
+   to dark for more; numbers are printed on every tile, so colour is never
+   the only cue. */
+.c-soft { --c: #a9b6c9; }
+.c-waitsoft { --c: #f3d57a; }
+.c-m0 { --c: #edf0f4; }
+.c-m1 { --c: #bcc8d9; }
+.c-m2 { --c: #8fa1bb; }
+.c-m3 { --c: #5a6f8e; }
+.c-m4 { --c: #2f415c; }
+.c-home { --c: transparent; box-shadow: inset 0 0 0 2px var(--ink); }
+svg.chart rect { fill: var(--c); }
+svg.chart.map { max-width: 560px; }
+svg.chart .tile rect { fill: var(--c); }
+svg.chart .tile .t-ab { font: 600 9px var(--text); fill: var(--ink); }
+svg.chart .tile .t-n { font: 600 11.5px var(--display); fill: var(--ink); }
+svg.chart .tile.c-m0 .t-ab { fill: var(--muted); }
+svg.chart .tile.c-m3 text, svg.chart .tile.c-m4 text { fill: #fff; }
+svg.chart rect.c-home { fill: none; stroke: var(--ink); stroke-width: 2.5; }
+.mx-toc { margin: 0 0 18px; }
+.mx-toc ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.mx-toc a { display: inline-flex; align-items: center; min-height: 36px; padding: 0 14px; border-radius: 18px; background: var(--surface); border: 1px solid var(--rule); font-weight: 600; font-size: 14px; text-decoration: none; }
+.mx-toc a:hover { border-color: var(--cobalt); }
+.mx-grid.mx-map-row { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
+.mx-stack { display: grid; gap: 32px; align-content: start; min-width: 0; }
+@media (max-width: 1000px) {
+  .mx-grid.mx-map-row { grid-template-columns: minmax(0, 1fr); }
+}

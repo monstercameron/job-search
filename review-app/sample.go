@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -38,6 +39,35 @@ var sampleJobs = []sampleJob{
 	{company: "Tidewater Learning", title: "Backend Engineer, Courses", location: "Remote, North America", arrangement: "Remote", industry: "Education",
 		skills: "Go; MySQL; REST APIs; caching", fit: "API and caching work close to past projects.", gaps: "Contract to hire for the first six months.",
 		priority: "Medium", salaryMin: 60, salaryMax: 75, posted: 2, role: 21, quals: 22, place: 20, pay: 9, open: 10},
+}
+
+// sampleProfiles give each sample job its company's headquarters, where
+// the role can be done from and what it asks for, in sampleJobs order.
+// Requirements are "kind:Name", with a trailing "?" for preferred and a
+// trailing "!" for one the sample profile lacks.
+type sampleProfile struct {
+	hq        [3]string // city, region, country
+	size, own string
+	places    []placeIn
+	reqs      []string
+	years     int
+	degree    string
+	level     string
+}
+
+var sampleProfiles = []sampleProfile{
+	{[3]string{"Seattle", "WA", "US"}, "51-200", "venture", []placeIn{{Kind: "remote", Country: "US"}},
+		[]string{"language:Go", "platform:PostgreSQL", "platform:Kubernetes!", "practice:gRPC", "practice:On-call?"}, 5, "none", "senior"},
+	{[3]string{"Denver", "CO", "US"}, "201-500", "private", []placeIn{{Kind: "office", Country: "US", Region: "CO", City: "Denver"}},
+		[]string{"language:TypeScript", "framework:React", "language:Go", "practice:Accessibility", "domain:Healthcare?!"}, 3, "equivalent", "mid"},
+	{[3]string{"Chicago", "IL", "US"}, "1001-5000", "public", []placeIn{{Kind: "remote", Country: "US"}},
+		[]string{"tool:Terraform", "platform:AWS", "language:Go", "practice:Observability", "certification:AWS Certified Solutions Architect?!"}, 4, "bachelor", "mid"},
+	{[3]string{"Washington", "DC", "US"}, "11-50", "nonprofit", []placeIn{{Kind: "remote", Country: "US", Region: "DC"}, {Kind: "remote", Country: "US", Region: "MD"}, {Kind: "remote", Country: "US", Region: "VA"}},
+		[]string{"language:Python", "language:Go", "language:SQL", "domain:Open data?"}, 2, "none", "mid"},
+	{[3]string{"Austin", "TX", "US"}, "501-1000", "private", []placeIn{{Kind: "office", Country: "US", Region: "TX", City: "Austin"}},
+		[]string{"language:Rust!", "language:Go", "practice:Distributed systems", "platform:Time-series databases?!"}, 8, "bachelor", "staff"},
+	{[3]string{"Vancouver", "BC", "CA"}, "201-500", "venture", []placeIn{{Kind: "remote", Country: "NORTH_AMERICA"}},
+		[]string{"language:Go", "platform:MySQL", "practice:REST APIs", "practice:Caching?"}, 3, "preferred", "mid"},
 }
 
 // loadSampleJobs fills an empty database with the sample jobs and two
@@ -81,10 +111,15 @@ func loadSampleJobs(db *sql.DB) (int, error) {
 		if err != nil {
 			return 0, err
 		}
+		jobID, _ := res.LastInsertId()
+		if i < len(sampleProfiles) {
+			if err = saveSampleProfile(tx, jobID, s.company, today, sampleProfiles[i]); err != nil {
+				return 0, err
+			}
+		}
 		if s.appStatus == "" {
 			continue
 		}
-		jobID, _ := res.LastInsertId()
 		app, err := tx.Exec(`INSERT INTO applications(job_id, status, applied_date, follow_up_date, notes) VALUES(?,?,?,?,?)`,
 			jobID, s.appStatus, day(s.applied), day(s.applied-8), "Sample application.")
 		if err != nil {
@@ -97,4 +132,30 @@ func loadSampleJobs(db *sql.DB) (int, error) {
 		}
 	}
 	return len(sampleJobs), tx.Commit()
+}
+
+func saveSampleProfile(tx *sql.Tx, jobID int64, company, today string, p sampleProfile) error {
+	if _, err := tx.Exec(`INSERT INTO companies(name, hq_city, hq_region, hq_country, size_band, ownership) VALUES(?,?,?,?,?,?) ON CONFLICT(name) DO NOTHING`,
+		company, p.hq[0], p.hq[1], p.hq[2], p.size, p.own); err != nil {
+		return err
+	}
+	for _, l := range p.places {
+		if _, err := tx.Exec(`INSERT INTO job_locations(job_id, kind, country, region, city) VALUES(?,?,?,?,?)`, jobID, l.Kind, l.Country, l.Region, l.City); err != nil {
+			return err
+		}
+	}
+	for _, r := range p.reqs {
+		kind, name, _ := strings.Cut(r, ":")
+		has := "yes"
+		if strings.HasSuffix(name, "!") {
+			name, has = strings.TrimSuffix(name, "!"), "no"
+		}
+		required := !strings.HasSuffix(name, "?")
+		name = strings.TrimSuffix(name, "?")
+		if _, err := tx.Exec(`INSERT INTO job_requirements(job_id, kind, name, required, owner_has) VALUES(?,?,?,?,?)`, jobID, kind, name, required, has); err != nil {
+			return err
+		}
+	}
+	_, err := tx.Exec(`UPDATE jobs SET years_min=?, degree_level=?, seniority_level=?, profiled_at=? WHERE id=?`, p.years, p.degree, p.level, today, jobID)
+	return err
 }

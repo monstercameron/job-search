@@ -4,6 +4,8 @@ const metricsHTML = `
 {{define "metrics"}}{{template "top" .Nav}}
 <div class="page-head has-tile"><span class="tile" aria-hidden="true">{{icon "metrics"}}</span><h1>Metrics</h1><p class="lede">How the search is going, drawn from your own tracker. With only a handful of applications so far, read the counts as a log and not as a trend.</p></div>
 
+<nav class="mx-toc" aria-label="Sections of this page"><ul><li><a href="#pipeline">Pipeline and replies</a></li><li><a href="#ab">Résumé A/B</a></li><li><a href="#leads">Your leads</a></li><li><a href="#places">Places</a></li><li><a href="#asks">What jobs ask for</a></li></ul></nav>
+
 <dl class="mx-tiles">{{range .Tiles}}<div><dt>{{.Label}}</dt><dd><strong>{{.Value}}</strong><span class="meta">{{.Note}}</span></dd></div>{{end}}</dl>
 {{with .Closed}}<p class="meta mx-quiet">{{.}}</p>{{end}}
 
@@ -25,6 +27,22 @@ const metricsHTML = `
 <p class="meta">{{.Leads}}</p>
 <div class="mx-grid">{{template "mxchart" .Score}}{{template "mxchart" .Industry}}{{template "mxchart" .Where}}{{template "mxchart" .Age}}</div>
 </section>
+
+{{with .Places}}<section class="panel mx" id="places" aria-labelledby="places-h">
+<h2 id="places-h">{{icon "pin"}}Places</h2>
+<p class="meta">{{.Lede}}</p>
+<div class="mx-grid mx-map-row">{{template "mxchart" .HQ}}<div class="mx-stack">{{template "mxchart" .Abroad}}{{template "mxchart" .HQCities}}</div></div>
+<div class="mx-grid mx-map-row">{{template "mxchart" .Open}}<div class="mx-stack">{{template "mxchart" .Reach}}{{template "mxchart" .Offices}}</div></div>
+<div class="mx-grid">{{template "mxchart" .Sizes}}{{template "mxchart" .Ownership}}</div>
+</section>{{end}}
+
+{{with .Asks}}<section class="panel mx" id="asks" aria-labelledby="asks-h">
+<h2 id="asks-h">{{icon "skills"}}What jobs ask for</h2>
+<p class="meta">{{.Lede}}</p>
+<div class="mx-grid">{{template "mxchart" .Gaps}}{{template "mxchart" .Years}}{{template "mxchart" .Degree}}{{template "mxchart" .Level}}</div>
+<h3 class="mx-sub">By kind</h3>
+<div class="mx-grid">{{range .Kinds}}{{template "mxchart" .}}{{end}}</div>
+</section>{{end}}
 {{template "bottom"}}{{end}}
 
 {{define "mxchart"}}<figure class="mx-chart" id="chart-{{.ID}}">
